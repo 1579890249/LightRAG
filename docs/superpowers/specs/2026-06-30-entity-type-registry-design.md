@@ -1,28 +1,28 @@
-# Dynamic Entity Type Registry Design
+# 动态实体类型注册表设计
 
-## Goal
+## 目标
 
-Make LightRAG entity types dynamically configurable through a file-backed registry, expose CRUD APIs for operators, and use the same approved entity type set for document extraction and structured database KG mapping.
+让 LightRAG 的实体类型支持运行时动态配置，通过文件持久化的注册表提供增删改查接口，并让文档抽取和结构化数据库 KG 映射使用同一套已批准实体类型。
 
-## Scope
+## 范围
 
-This first phase uses YAML files under a runtime data directory. It does not add a UI, PostgreSQL tables, an approval workflow, or automatic migration of existing graph node `entity_type` values.
+第一阶段采用 YAML 文件作为运行时配置存储。本阶段不做 UI、不新增 PostgreSQL 配置表、不做审批流，也不自动迁移已有图节点中的 `entity_type` 值。
 
-## Registry Storage
+## 注册表存储
 
-The registry is workspace-scoped and stored as YAML:
+实体类型注册表按 workspace 隔离，存储为 YAML 文件：
 
 ```text
 /app/data/entity_types/{workspace}.yaml
 ```
 
-For local tests and non-container runs, the base directory is configurable and defaults to:
+本地测试和非容器运行时，基础目录可配置，默认值为：
 
 ```text
 ./data/entity_types
 ```
 
-The file shape is:
+文件结构如下：
 
 ```yaml
 schema_version: entity_type_registry_v1
@@ -38,9 +38,9 @@ entity_types:
     status: active
 ```
 
-Entity type names are stable identifiers. They must be non-empty ASCII-like symbolic names suitable for prompt and mapping references, for example `Person`, `Organization`, `BidSubmission`, `PhoneNumber`, and `ShareholdingRecord`. Labels and descriptions can be Chinese.
+实体类型名称是稳定标识符，要求是非空、类似 ASCII 的符号名，适合在 prompt 和 mapping 中引用，例如 `Person`、`Organization`、`BidSubmission`、`PhoneNumber`、`ShareholdingRecord`。`label` 和 `description` 可以使用中文。
 
-The system initializes a missing registry from the current canonical seed:
+当某个 workspace 的注册表文件不存在时，系统用内置种子类型自动初始化：
 
 - `Person`
 - `Organization`
@@ -56,11 +56,11 @@ The system initializes a missing registry from the current canonical seed:
 - `Identifier`
 - `Other`
 
-`Other` is reserved for document extraction fallback and cannot be deleted.
+`Other` 是文档抽取兜底类型，作为保留类型，不允许删除。
 
-## CRUD API
+## CRUD 接口
 
-Add a general authenticated router, not audit-specific:
+新增通用认证路由，不放到 audit 专属接口下面：
 
 ```text
 GET    /entity-types
@@ -69,14 +69,14 @@ PUT    /entity-types/{name}
 DELETE /entity-types/{name}
 ```
 
-All routes use the existing combined auth dependency.
+所有接口使用现有的 combined auth dependency。
 
-`GET /entity-types` returns the registry for the current workspace. Query parameters:
+`GET /entity-types` 返回当前 workspace 的注册表。查询参数：
 
-- `workspace`: optional, defaults to current `rag.workspace`.
-- `include_inactive`: optional boolean, defaults to `false`.
+- `workspace`：可选，默认使用当前 `rag.workspace`。
+- `include_inactive`：可选布尔值，默认 `false`。
 
-`POST /entity-types` creates an active type. Request body:
+`POST /entity-types` 创建 active 状态的实体类型。请求体：
 
 ```json
 {
@@ -86,22 +86,22 @@ All routes use the existing combined auth dependency.
 }
 ```
 
-It returns `409` if the active type already exists. If the type exists as inactive, creation reactivates it and updates label/description.
+如果 active 类型已存在，返回 `409`。如果该类型已存在但状态是 inactive，则重新激活并更新 `label` / `description`。
 
-`PUT /entity-types/{name}` updates label, description, and status. Renaming is intentionally excluded in phase 1 because mappings and existing graph nodes reference the name.
+`PUT /entity-types/{name}` 更新 `label`、`description` 和 `status`。第一阶段不支持重命名，因为结构化 mapping 和已有图节点都会引用实体类型名称。
 
-`DELETE /entity-types/{name}` soft-deletes by setting `status: inactive`. It rejects deletion of `Other`. It does not rewrite existing mappings or graph nodes.
+`DELETE /entity-types/{name}` 做软删除，将 `status` 设置为 `inactive`。删除 `Other` 会被拒绝。删除操作不重写已有 mapping，也不重写已有图节点。
 
-## Document Extraction Integration
+## 文档抽取集成
 
-Document extraction currently receives `entity_types_guidance` through `addon_params` / prompt profiles. The new registry becomes the default source of guidance:
+当前文档抽取通过 `addon_params` / prompt profile 注入 `entity_types_guidance`。新增注册表后，注册表成为默认 guidance 来源：
 
-1. `LightRAG._refresh_addon_params_cache()` resolves the normal prompt profile.
-2. If explicit `addon_params["entity_types_guidance"]` is present, it still wins for compatibility.
-3. Otherwise, the registry is loaded for the current workspace and converted into guidance lines.
-4. The resolved `_entity_extraction_prompt_profile["entity_types_guidance"]` is updated with those lines.
+1. `LightRAG._refresh_addon_params_cache()` 仍然先解析原有 prompt profile。
+2. 如果显式传入 `addon_params["entity_types_guidance"]`，继续保持兼容，显式配置优先。
+3. 如果没有显式 guidance，则读取当前 workspace 的实体类型注册表，并转换为 prompt guidance。
+4. 将解析后的 `_entity_extraction_prompt_profile["entity_types_guidance"]` 更新为注册表生成的内容。
 
-Generated guidance format:
+生成的 guidance 格式：
 
 ```text
 Classify each entity using one of the following approved types. If no type fits, use `Other`.
@@ -110,44 +110,44 @@ Classify each entity using one of the following approved types. If no type fits,
 - Organization: 组织机构。企业、采购单位、代理机构、政府部门等
 ```
 
-This keeps the existing extraction prompt contract unchanged while making the approved type list dynamic.
+这样可以保持现有抽取 prompt 的入参契约不变，同时让可用实体类型变成动态配置。
 
-## Structured KG Mapping Integration
+## 结构化 KG 映射集成
 
-Structured database KG mapping currently validates against `entity_types` embedded in mapping YAML. Phase 1 keeps that field for mapping readability and per-type metadata such as `id_prefix`, but validates the referenced entity type names against the shared registry when a registry is supplied.
+结构化数据库 KG mapping 当前会校验 YAML 内嵌的 `entity_types`。第一阶段保留这个字段，用于 mapping 可读性和 `id_prefix` 等类型级元数据，但当传入实体类型注册表时，会额外用共享注册表校验实体类型名称。
 
-Audit KG sync and audit mapping generation/publish paths will load the workspace registry and validate:
+Audit KG sync 和 audit mapping 生成 / 发布路径会读取当前 workspace 的注册表，并校验：
 
-- every mapping `entity_types` key is active in the registry,
-- every `entities[].entity_type` is active in the registry,
-- every relationship endpoint `entity_type` is active in the registry.
+- mapping `entity_types` 中的每个 key 都必须是注册表中的 active 类型；
+- `entities[].entity_type` 都必须是注册表中的 active 类型；
+- relationship 的 `src.entity_type` 和 `tgt.entity_type` 都必须是注册表中的 active 类型。
 
-Unknown or inactive types return `400` with a clear message. This keeps document extraction and structured ingestion on one approved type system.
+未知类型或 inactive 类型返回 `400`，错误信息明确列出问题类型。这样文档抽取和结构化入库会共享同一个已批准类型系统。
 
-## Errors And Concurrency
+## 错误处理与并发
 
-Registry reads tolerate a missing file by creating the seed registry. Invalid YAML or invalid schema returns a server error for direct API reads and a clear validation error for KG sync.
+读取注册表时，如果文件不存在，则自动创建种子注册表。YAML 格式错误或 schema 无效时，直接读取 API 返回服务端错误；KG sync 路径返回清晰的校验错误。
 
-Writes use atomic replace:
+写入采用原子替换：
 
-1. read current registry,
-2. update in memory,
-3. write a temp YAML file in the same directory,
-4. replace the target file.
+1. 读取当前注册表；
+2. 在内存中修改；
+3. 在同一目录写入临时 YAML 文件；
+4. 用临时文件替换目标文件。
 
-No cross-process distributed lock is added in phase 1. Atomic replacement avoids partial files; concurrent last-writer-wins behavior is acceptable for the first file-backed version.
+第一阶段不增加跨进程分布式锁。原子替换可以避免半写入文件；并发写入采用最后写入者生效，这对第一版文件注册表可以接受。
 
-## Tests
+## 测试
 
-Add focused tests for:
+新增聚焦测试：
 
-- registry seed creation, load, save, create, update, and soft delete,
-- API auth-compatible CRUD behavior,
-- document extraction prompt guidance uses the registry by default,
-- explicit `addon_params["entity_types_guidance"]` still overrides registry guidance,
-- audit KG sync rejects a mapping that references an inactive or unknown registry type.
+- 注册表种子创建、加载、保存、创建类型、更新类型、软删除；
+- API 在现有认证依赖下的 CRUD 行为；
+- 文档抽取默认使用注册表生成的 guidance；
+- 显式 `addon_params["entity_types_guidance"]` 仍然覆盖注册表 guidance；
+- audit KG sync 遇到 unknown 或 inactive 注册表类型时拒绝 mapping。
 
-Run relevant subsets with:
+相关测试命令：
 
 ```bash
 ./scripts/test.sh tests/extraction/test_entity_extraction_stability.py
