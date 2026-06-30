@@ -17,6 +17,7 @@ import Checkbox from '@/components/ui/Checkbox'
 import UploadDocumentsDialog from '@/components/documents/UploadDocumentsDialog'
 import ClearDocumentsDialog from '@/components/documents/ClearDocumentsDialog'
 import DeleteDocumentsDialog from '@/components/documents/DeleteDocumentsDialog'
+import EntityTypesDialog from '@/components/EntityTypesDialog'
 import PaginationControls from '@/components/ui/PaginationControls'
 import {
   Dialog,
@@ -42,7 +43,7 @@ import { toast } from 'sonner'
 import { useBackendState } from '@/stores/state'
 import { copyToClipboard } from '@/utils/clipboard'
 
-import { RefreshCwIcon, ActivityIcon, ArrowUpIcon, ArrowDownIcon, RotateCcwIcon, CheckSquareIcon, XIcon, AlertTriangle, Info, CopyIcon } from 'lucide-react'
+import { RefreshCwIcon, ActivityIcon, ArrowUpIcon, ArrowDownIcon, RotateCcwIcon, CheckSquareIcon, XIcon, AlertTriangle, Info, CopyIcon, Settings2Icon } from 'lucide-react'
 import PipelineStatusDialog from '@/components/documents/PipelineStatusDialog'
 import {
   getStatusBucket,
@@ -392,6 +393,7 @@ export default function DocumentManager() {
   }, []);
 
   const [showPipelineStatus, setShowPipelineStatus] = useState(false)
+  const [showEntityTypes, setShowEntityTypes] = useState(false)
   const { t, i18n } = useTranslation()
   const health = useBackendState.use.health()
   const pipelineActive = useBackendState.use.pipelineActive()
@@ -1442,6 +1444,20 @@ export default function DocumentManager() {
             <UploadDocumentsDialog
               onUploadBatchAccepted={() => startActivityProbe('upload')}
               onDocumentsUploaded={async () => { refreshDocumentsThrottled() }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              side="bottom"
+              tooltip={t('entityTypes.title')}
+              onClick={() => setShowEntityTypes(true)}
+            >
+              <Settings2Icon className="h-4 w-4" />
+              {t('settings.entityTypes')}
+            </Button>
+            <EntityTypesDialog
+              open={showEntityTypes}
+              onOpenChange={setShowEntityTypes}
             />
             <PipelineStatusDialog
               open={showPipelineStatus}

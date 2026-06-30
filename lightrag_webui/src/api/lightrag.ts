@@ -319,6 +319,32 @@ export type StatusCountsResponse = {
   status_counts: Record<string, number>
 }
 
+export type EntityTypeStatus = 'active' | 'inactive'
+
+export type EntityTypeItem = {
+  name: string
+  label: string
+  description: string
+  status: EntityTypeStatus
+}
+
+export type EntityTypesResponse = {
+  workspace: string
+  entity_types: EntityTypeItem[]
+}
+
+export type EntityTypeCreateRequest = {
+  name: string
+  label?: string
+  description?: string
+}
+
+export type EntityTypeUpdateRequest = {
+  label?: string | null
+  description?: string | null
+  status?: EntityTypeStatus | null
+}
+
 export type AuthStatusResponse = {
   auth_configured: boolean
   access_token?: string
@@ -1276,5 +1302,76 @@ export const getDocumentsPaginatedWithTimeout = (
  */
 export const getDocumentStatusCounts = async (): Promise<StatusCountsResponse> => {
   const response = await axiosInstance.get('/documents/status_counts')
+  return response.data
+}
+
+/**
+ * Load the workspace-scoped entity type registry.
+ * @param includeInactive Controls whether inactive soft-deleted types are returned for maintenance views.
+ * @param workspace Optional workspace override; undefined means the backend's current workspace is used.
+ */
+export const getEntityTypes = async (
+  includeInactive: boolean = false,
+  workspace?: string
+): Promise<EntityTypesResponse> => {
+  const response = await axiosInstance.get('/entity-types', {
+    params: {
+      include_inactive: includeInactive,
+      workspace
+    }
+  })
+  return response.data
+}
+
+/**
+ * Create or reactivate an entity type in the active workspace registry.
+ * @param request Entity type identity and user-facing metadata.
+ * @param workspace Optional workspace override; undefined keeps the backend default workspace.
+ */
+export const createEntityType = async (
+  request: EntityTypeCreateRequest,
+  workspace?: string
+): Promise<unknown> => {
+  const response = await axiosInstance.post('/entity-types', request, {
+    params: {
+      workspace
+    }
+  })
+  return response.data
+}
+
+/**
+ * Update the editable metadata or status for an existing entity type.
+ * @param name Stable entity type name; the backend intentionally does not support renaming.
+ * @param request Partial metadata/status update.
+ * @param workspace Optional workspace override; undefined keeps the backend default workspace.
+ */
+export const updateEntityType = async (
+  name: string,
+  request: EntityTypeUpdateRequest,
+  workspace?: string
+): Promise<unknown> => {
+  const response = await axiosInstance.put(`/entity-types/${encodeURIComponent(name)}`, request, {
+    params: {
+      workspace
+    }
+  })
+  return response.data
+}
+
+/**
+ * Soft-delete an entity type by marking it inactive in the registry.
+ * @param name Stable entity type name to deactivate.
+ * @param workspace Optional workspace override; undefined keeps the backend default workspace.
+ */
+export const deleteEntityType = async (
+  name: string,
+  workspace?: string
+): Promise<unknown> => {
+  const response = await axiosInstance.delete(`/entity-types/${encodeURIComponent(name)}`, {
+    params: {
+      workspace
+    }
+  })
   return response.data
 }

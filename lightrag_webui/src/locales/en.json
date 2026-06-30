@@ -4,7 +4,8 @@
     "theme": "Theme",
     "light": "Light",
     "dark": "Dark",
-    "system": "System"
+    "system": "System",
+    "entityTypes": "Entity Types"
   },
   "header": {
     "documents": "Documents",
@@ -38,6 +39,42 @@
     "save": "Save",
     "saving": "Saving...",
     "saveFailed": "Save failed"
+  },
+  "entityTypes": {
+    "title": "Entity Type Maintenance",
+    "description": "Maintain the entity type registry for the current workspace.",
+    "descriptionWithWorkspace": "Maintain the entity type registry for workspace {{workspace}}.",
+    "fields": {
+      "name": "Name",
+      "label": "Label",
+      "description": "Description",
+      "actions": "Actions"
+    },
+    "actions": {
+      "create": "Create",
+      "refresh": "Refresh",
+      "filterPlaceholder": "Filter by name, label, or description",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    },
+    "messages": {
+      "loading": "Loading entity types...",
+      "empty": "No entity types",
+      "noFilterResults": "No matching entity types",
+      "created": "Entity type created",
+      "updated": "Entity type updated",
+      "deleted": "Entity type deleted"
+    },
+    "errors": {
+      "nameRequired": "Please enter a type name",
+      "loadFailed": "Failed to load entity types\n{{error}}",
+      "createFailed": "Failed to create entity type\n{{error}}",
+      "updateFailed": "Failed to update entity type\n{{error}}",
+      "deleteFailed": "Failed to delete entity type\n{{error}}",
+      "otherCannotDelete": "Other is the fallback type and cannot be deleted"
+    }
   },
   "documentPanel": {
     "clearDocuments": {

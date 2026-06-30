@@ -4,7 +4,8 @@
     "theme": "主题",
     "light": "浅色",
     "dark": "深色",
-    "system": "系统"
+    "system": "系统",
+    "entityTypes": "实体类型维护"
   },
   "header": {
     "documents": "文档",
@@ -38,6 +39,42 @@
     "save": "保存",
     "saving": "保存中...",
     "saveFailed": "保存失败"
+  },
+  "entityTypes": {
+    "title": "实体类型维护",
+    "description": "维护当前工作空间的实体类型注册表。",
+    "descriptionWithWorkspace": "维护工作空间 {{workspace}} 的实体类型注册表。",
+    "fields": {
+      "name": "类型名称",
+      "label": "显示名称",
+      "description": "说明",
+      "actions": "操作"
+    },
+    "actions": {
+      "create": "新增",
+      "refresh": "刷新",
+      "filterPlaceholder": "按名称、显示名称或说明过滤",
+      "edit": "编辑",
+      "save": "保存",
+      "cancel": "取消",
+      "delete": "删除"
+    },
+    "messages": {
+      "loading": "正在加载实体类型...",
+      "empty": "暂无实体类型",
+      "noFilterResults": "没有匹配的实体类型",
+      "created": "实体类型已新增",
+      "updated": "实体类型已更新",
+      "deleted": "实体类型已删除"
+    },
+    "errors": {
+      "nameRequired": "请输入类型名称",
+      "loadFailed": "加载实体类型失败\n{{error}}",
+      "createFailed": "新增实体类型失败\n{{error}}",
+      "updateFailed": "更新实体类型失败\n{{error}}",
+      "deleteFailed": "删除实体类型失败\n{{error}}",
+      "otherCannotDelete": "Other 是兜底类型，不能删除"
+    }
   },
   "documentPanel": {
     "clearDocuments": {
