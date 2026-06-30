@@ -14,17 +14,19 @@ import uk from './locales/uk.json'
 import ko from './locales/ko.json'
 import vi from './locales/vi.json'
 
+const defaultLanguage = 'zh'
+
 const getStoredLanguage = () => {
   try {
     const settingsString = localStorage.getItem('settings-storage')
     if (settingsString) {
       const settings = JSON.parse(settingsString)
-      return settings.state?.language || 'en'
+      return settings.state?.language || defaultLanguage
     }
   } catch (e) {
     console.error('Failed to get stored language:', e)
   }
-  return 'en'
+  return defaultLanguage
 }
 
 i18n

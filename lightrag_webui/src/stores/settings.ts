@@ -85,7 +85,7 @@ const useSettingsStoreBase = create<SettingsState>()(
   persist(
     (set) => ({
       theme: 'system',
-      language: 'en',
+      language: 'zh',
       showPropertyPanel: true,
       showNodeSearchBar: true,
       showLegend: false,
@@ -269,7 +269,7 @@ const useSettingsStoreBase = create<SettingsState>()(
         }
         if (version < 8) {
           state.graphMinDegree = 0
-          state.language = 'en'
+          state.language = state.language || 'zh'
         }
         if (version < 9) {
           state.showFileName = false

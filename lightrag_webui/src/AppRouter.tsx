@@ -74,6 +74,10 @@ const AppContent = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
+        path="/documents"
+        element={isAuthenticated ? <App initialTab="documents" hideHeader /> : null}
+      />
+      <Route
         path="/knowledge-graph"
         element={isAuthenticated ? <App initialTab="knowledge-graph" hideHeader /> : null}
       />
