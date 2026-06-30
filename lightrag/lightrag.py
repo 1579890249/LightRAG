@@ -105,7 +105,7 @@ from lightrag.base import (
     OllamaServerInfos,
     QueryResult,
 )
-from lightrag.namespace import NameSpace
+from lightrag.namespace import NameSpace, is_namespace
 from lightrag.chunker import chunking_by_token_size
 from lightrag.operate import (
     extract_entities,
@@ -129,6 +129,7 @@ from lightrag.utils import (
     convert_to_user_format,
     logger,
     make_relation_vdb_ids,
+    merge_source_ids,
     subtract_source_ids,
     make_relation_chunk_key,
     normalize_source_ids_limit_method,
@@ -159,6 +160,45 @@ from lightrag.storage_migrations import _StorageMigrationMixin
 load_dotenv(dotenv_path=".env", override=False)
 
 _SyncResultT = TypeVar("_SyncResultT")
+
+
+def _split_graph_source_ids(source_id: Any) -> list[str]:
+    if not isinstance(source_id, str) or not source_id:
+        return []
+    return [chunk_id for chunk_id in source_id.split(GRAPH_FIELD_SEP) if chunk_id]
+
+
+def _graph_record_references_chunks(
+    record: Mapping[str, Any], chunk_ids_set: set[str]
+) -> bool:
+    if not chunk_ids_set:
+        return False
+    return bool(set(_split_graph_source_ids(record.get("source_id"))) & chunk_ids_set)
+
+
+def _normalize_graph_node_record(
+    node_data: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    node_label = node_data.get("entity_id") or node_data.get("id")
+    if not node_label:
+        return None
+    normalized = dict(node_data)
+    normalized.setdefault("entity_id", node_label)
+    normalized.setdefault("id", node_label)
+    return normalized
+
+
+def _normalize_graph_edge_record(
+    edge_data: Mapping[str, Any],
+) -> tuple[tuple[str, str], dict[str, Any]] | None:
+    src = edge_data.get("source") or edge_data.get("src_id")
+    tgt = edge_data.get("target") or edge_data.get("tgt_id")
+    if not src or not tgt:
+        return None
+    normalized = dict(edge_data)
+    normalized.setdefault("source", src)
+    normalized.setdefault("target", tgt)
+    return tuple(sorted((str(src), str(tgt)))), normalized
 
 
 def _run_sync(
@@ -256,6 +296,118 @@ def _run_sync(
             f"Use `await {async_name}(...)` on the original loop instead."
         )
     return loop.run_until_complete(coro_factory())
+
+
+async def _find_storage_chunk_ids_by_full_doc_id(
+    storage: Any,
+    full_doc_id: str,
+    workspace: str,
+) -> list[str]:
+    """Find chunk IDs that belong to a source-row pseudo document."""
+
+    if not storage or not full_doc_id:
+        return []
+
+    chunk_ids = await _find_pg_chunk_ids_by_full_doc_id(
+        storage,
+        full_doc_id,
+        workspace,
+    )
+    chunk_ids = merge_source_ids(
+        chunk_ids,
+        await _find_milvus_chunk_ids_by_full_doc_id(storage, full_doc_id),
+    )
+    chunk_ids = merge_source_ids(
+        chunk_ids,
+        _find_in_memory_chunk_ids_by_full_doc_id(storage, full_doc_id),
+    )
+    return chunk_ids
+
+
+async def _find_pg_chunk_ids_by_full_doc_id(
+    storage: Any,
+    full_doc_id: str,
+    workspace: str,
+) -> list[str]:
+    db = getattr(storage, "db", None)
+    namespace = getattr(storage, "namespace", "")
+    if not db or not is_namespace(namespace, NameSpace.KV_STORE_TEXT_CHUNKS):
+        return []
+
+    try:
+        rows = await db.query(
+            (
+                "SELECT id FROM LIGHTRAG_DOC_CHUNKS "
+                "WHERE workspace=$1 AND full_doc_id=$2 ORDER BY id"
+            ),
+            [workspace, full_doc_id],
+            multirows=True,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to scan PostgreSQL text chunks for full_doc_id %s: %s",
+            full_doc_id,
+            exc,
+        )
+        return []
+
+    return [str(row["id"]) for row in rows or [] if row and row.get("id")]
+
+
+async def _find_milvus_chunk_ids_by_full_doc_id(
+    storage: Any,
+    full_doc_id: str,
+) -> list[str]:
+    client = getattr(storage, "_client", None)
+    namespace = getattr(storage, "namespace", "")
+    if (
+        not client
+        or not is_namespace(namespace, NameSpace.VECTOR_STORE_CHUNKS)
+        or "full_doc_id" not in getattr(storage, "meta_fields", set())
+    ):
+        return []
+
+    try:
+        ensure_loaded = getattr(storage, "_ensure_collection_loaded", None)
+        if ensure_loaded:
+            ensure_loaded()
+        rows = client.query(
+            collection_name=getattr(storage, "final_namespace"),
+            filter=f'full_doc_id == "{_milvus_filter_string(full_doc_id)}"',
+            output_fields=["id"],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to scan Milvus chunks for full_doc_id %s: %s",
+            full_doc_id,
+            exc,
+        )
+        return []
+
+    return [str(row["id"]) for row in rows or [] if row and row.get("id")]
+
+
+def _find_in_memory_chunk_ids_by_full_doc_id(storage: Any, full_doc_id: str) -> list[str]:
+    raw_data = getattr(storage, "_data", None)
+    if raw_data is None:
+        return []
+
+    try:
+        items = raw_data.items()
+    except Exception:
+        return []
+
+    return [
+        chunk_id
+        for chunk_id, chunk_data in items
+        if isinstance(chunk_id, str)
+        and isinstance(chunk_data, dict)
+        and str(chunk_data.get("full_doc_id") or "").strip() == full_doc_id
+    ]
+
+
+def _milvus_filter_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 @final
@@ -1793,6 +1945,10 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             # Insert chunks into vector storage
             all_chunks_data: dict[str, dict[str, str]] = {}
             chunk_to_source_map: dict[str, str] = {}
+            full_entities_by_source: dict[str, set[str]] = {}
+            full_relations_by_source: dict[str, set[tuple[str, str]]] = {}
+            entity_chunks_by_name: dict[str, list[str]] = {}
+            relation_chunks_by_key: dict[str, list[str]] = {}
             for chunk_data in custom_kg.get("chunks", []):
                 chunk_content = sanitize_text_for_encoding(chunk_data["content"])
                 source_id = chunk_data["source_id"]
@@ -1835,6 +1991,16 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 entity_name = entity_data["entity_name"]
                 deduped_entities.pop(entity_name, None)
                 deduped_entities[entity_name] = entity_data
+                source_chunk_id = entity_data.get("source_id", "UNKNOWN")
+                source_id = chunk_to_source_map.get(source_chunk_id, "UNKNOWN")
+                if source_id != "UNKNOWN":
+                    full_entities_by_source.setdefault(source_chunk_id, set()).add(
+                        entity_name
+                    )
+                    entity_chunks_by_name[entity_name] = merge_source_ids(
+                        entity_chunks_by_name.get(entity_name, []),
+                        [source_id],
+                    )
 
             # Insert entities into knowledge graph (batch for performance)
             all_entities_data: list[dict[str, str]] = []
@@ -1877,6 +2043,17 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 relation_key = tuple(sorted((src_id, tgt_id)))
                 deduped_relationships.pop(relation_key, None)
                 deduped_relationships[relation_key] = relationship_data
+                source_chunk_id = relationship_data.get("source_id", "UNKNOWN")
+                source_id = chunk_to_source_map.get(source_chunk_id, "UNKNOWN")
+                if source_id != "UNKNOWN":
+                    full_relations_by_source.setdefault(source_chunk_id, set()).add(
+                        relation_key
+                    )
+                    relation_chunk_key = make_relation_chunk_key(src_id, tgt_id)
+                    relation_chunks_by_key[relation_chunk_key] = merge_source_ids(
+                        relation_chunks_by_key.get(relation_chunk_key, []),
+                        [source_id],
+                    )
 
             # Coarse-grained keyed lock covering every entity name and every
             # relationship endpoint this batch will write. Keys collide with
@@ -2029,6 +2206,93 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
                 if legacy_rel_ids_to_delete:
                     await self.relationships_vdb.delete(legacy_rel_ids_to_delete)
+
+                provenance_tasks = []
+                if full_entities_by_source:
+                    full_entities_payload = {}
+                    for source_id, entity_names in sorted(
+                        full_entities_by_source.items()
+                    ):
+                        if source_id not in chunk_to_source_map:
+                            continue
+                        sorted_entity_names = sorted(entity_names)
+                        full_entities_payload[source_id] = {
+                            "entity_names": sorted_entity_names,
+                            "count": len(sorted_entity_names),
+                            "chunk_ids": [chunk_to_source_map[source_id]],
+                        }
+                    provenance_tasks.append(
+                        self.full_entities.upsert(full_entities_payload)
+                    )
+
+                if full_relations_by_source:
+                    full_relations_payload = {}
+                    for source_id, relation_pairs in sorted(
+                        full_relations_by_source.items()
+                    ):
+                        if source_id not in chunk_to_source_map:
+                            continue
+                        sorted_relation_pairs = [
+                            [src, tgt] for src, tgt in sorted(relation_pairs)
+                        ]
+                        full_relations_payload[source_id] = {
+                            "relation_pairs": sorted_relation_pairs,
+                            "count": len(sorted_relation_pairs),
+                            "chunk_ids": [chunk_to_source_map[source_id]],
+                        }
+                    provenance_tasks.append(
+                        self.full_relations.upsert(full_relations_payload)
+                    )
+
+                current_time = int(time.time())
+                if entity_chunks_by_name and self.entity_chunks:
+                    entity_chunks_payload = {}
+                    for entity_name, chunk_ids in sorted(entity_chunks_by_name.items()):
+                        existing = await self.entity_chunks.get_by_id(entity_name)
+                        existing_chunk_ids = []
+                        if existing and isinstance(existing, dict):
+                            existing_chunk_ids = normalize_string_list(
+                                existing.get("chunk_ids", []),
+                                context=f"entity_chunks[{entity_name}].chunk_ids",
+                            )
+                        merged_chunk_ids = merge_source_ids(
+                            existing_chunk_ids, chunk_ids
+                        )
+                        entity_chunks_payload[entity_name] = {
+                            "chunk_ids": merged_chunk_ids,
+                            "count": len(merged_chunk_ids),
+                            "updated_at": current_time,
+                        }
+                    provenance_tasks.append(
+                        self.entity_chunks.upsert(entity_chunks_payload)
+                    )
+
+                if relation_chunks_by_key and self.relation_chunks:
+                    relation_chunks_payload = {}
+                    for relation_key, chunk_ids in sorted(
+                        relation_chunks_by_key.items()
+                    ):
+                        existing = await self.relation_chunks.get_by_id(relation_key)
+                        existing_chunk_ids = []
+                        if existing and isinstance(existing, dict):
+                            existing_chunk_ids = normalize_string_list(
+                                existing.get("chunk_ids", []),
+                                context=f"relation_chunks[{relation_key}].chunk_ids",
+                            )
+                        merged_chunk_ids = merge_source_ids(
+                            existing_chunk_ids, chunk_ids
+                        )
+                        relation_chunks_payload[relation_key] = {
+                            "chunk_ids": merged_chunk_ids,
+                            "count": len(merged_chunk_ids),
+                            "updated_at": current_time,
+                        }
+                    provenance_tasks.append(
+                        self.relation_chunks.upsert(relation_chunks_payload)
+                    )
+
+                if provenance_tasks:
+                    await asyncio.gather(*provenance_tasks)
 
             if lock_key_set:
                 if entity_nodes or deduped_relationships:
@@ -2689,6 +2953,52 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         # Return the dictionary containing statuses only for the found document IDs
         return found_statuses
 
+    async def _find_graph_records_referencing_chunks(
+        self,
+        chunk_ids_set: set[str],
+        *,
+        known_node_ids: set[str] | None = None,
+        known_edge_keys: set[tuple[str, str]] | None = None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Find graph records that still reference deleted chunks.
+
+        Document deletion normally starts from ``full_entities`` /
+        ``full_relations``. Older or partially failed writes may have graph
+        records without those reverse indexes, so this is a defensive repair
+        path keyed by the authoritative chunk IDs from ``doc_status``.
+        """
+        if not chunk_ids_set:
+            return [], []
+
+        known_node_ids = known_node_ids or set()
+        known_edge_keys = known_edge_keys or set()
+        extra_nodes: list[dict[str, Any]] = []
+        extra_edges: list[dict[str, Any]] = []
+
+        for raw_node in await self.chunk_entity_relation_graph.get_all_nodes():
+            normalized_node = _normalize_graph_node_record(raw_node)
+            if not normalized_node:
+                continue
+            node_label = str(normalized_node["entity_id"])
+            if node_label in known_node_ids:
+                continue
+            if _graph_record_references_chunks(normalized_node, chunk_ids_set):
+                extra_nodes.append(normalized_node)
+                known_node_ids.add(node_label)
+
+        for raw_edge in await self.chunk_entity_relation_graph.get_all_edges():
+            normalized_edge = _normalize_graph_edge_record(raw_edge)
+            if not normalized_edge:
+                continue
+            edge_key, edge_data = normalized_edge
+            if edge_key in known_edge_keys:
+                continue
+            if _graph_record_references_chunks(edge_data, chunk_ids_set):
+                extra_edges.append(edge_data)
+                known_edge_keys.add(edge_key)
+
+        return extra_nodes, extra_edges
+
     async def _purge_doc_chunks_and_kg(
         self,
         doc_id: str,
@@ -2762,6 +3072,8 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
             affected_nodes: list[dict[str, Any]] = []
             affected_edges: list[dict[str, Any]] = []
+            affected_node_ids: set[str] = set()
+            affected_edge_keys: set[tuple[str, str]] = set()
 
             if doc_entities_data and "entity_names" in doc_entities_data:
                 entity_names = doc_entities_data["entity_names"]
@@ -2771,9 +3083,12 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 for entity_name in entity_names:
                     node_data = nodes_dict.get(entity_name)
                     if node_data:
-                        if "id" not in node_data:
-                            node_data["id"] = entity_name
-                        affected_nodes.append(node_data)
+                        normalized_node = _normalize_graph_node_record(
+                            {**node_data, "entity_id": entity_name}
+                        )
+                        if normalized_node:
+                            affected_nodes.append(normalized_node)
+                            affected_node_ids.add(str(normalized_node["entity_id"]))
 
             if doc_relations_data and "relation_pairs" in doc_relations_data:
                 relation_pairs = doc_relations_data["relation_pairs"]
@@ -2787,11 +3102,28 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     src, tgt = pair[0], pair[1]
                     edge_data = edges_dict.get((src, tgt))
                     if edge_data:
-                        if "source" not in edge_data:
-                            edge_data["source"] = src
-                        if "target" not in edge_data:
-                            edge_data["target"] = tgt
-                        affected_edges.append(edge_data)
+                        normalized_edge = _normalize_graph_edge_record(
+                            {**edge_data, "source": src, "target": tgt}
+                        )
+                        if normalized_edge:
+                            edge_key, normalized_data = normalized_edge
+                            affected_edges.append(normalized_data)
+                            affected_edge_keys.add(edge_key)
+
+            extra_nodes, extra_edges = await self._find_graph_records_referencing_chunks(
+                chunk_ids_set,
+                known_node_ids=affected_node_ids,
+                known_edge_keys=affected_edge_keys,
+            )
+            if extra_nodes or extra_edges:
+                affected_nodes.extend(extra_nodes)
+                affected_edges.extend(extra_edges)
+                logger.info(
+                    "[purge] %s: found %d graph node(s) and %d edge(s) by source_id fallback",
+                    doc_id,
+                    len(extra_nodes),
+                    len(extra_edges),
+                )
         except Exception as e:
             logger.error(
                 f"[purge] Failed to analyze affected graph elements for {doc_id}: {e}"
@@ -3450,6 +3782,8 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
                 affected_nodes = []
                 affected_edges = []
+                affected_node_ids: set[str] = set()
+                affected_edge_keys: set[tuple[str, str]] = set()
 
                 # Get entity data from graph storage using entity names from full_entities
                 if doc_entities_data and "entity_names" in doc_entities_data:
@@ -3461,10 +3795,14 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     for entity_name in entity_names:
                         node_data = nodes_dict.get(entity_name)
                         if node_data:
-                            # Ensure compatibility with existing logic that expects "id" field
-                            if "id" not in node_data:
-                                node_data["id"] = entity_name
-                            affected_nodes.append(node_data)
+                            normalized_node = _normalize_graph_node_record(
+                                {**node_data, "entity_id": entity_name}
+                            )
+                            if normalized_node:
+                                affected_nodes.append(normalized_node)
+                                affected_node_ids.add(
+                                    str(normalized_node["entity_id"])
+                                )
 
                 # Get relation data from graph storage using relation pairs from full_relations
                 if doc_relations_data and "relation_pairs" in doc_relations_data:
@@ -3482,12 +3820,28 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                         edge_key = (src, tgt)
                         edge_data = edges_dict.get(edge_key)
                         if edge_data:
-                            # Ensure compatibility with existing logic that expects "source" and "target" fields
-                            if "source" not in edge_data:
-                                edge_data["source"] = src
-                            if "target" not in edge_data:
-                                edge_data["target"] = tgt
-                            affected_edges.append(edge_data)
+                            normalized_edge = _normalize_graph_edge_record(
+                                {**edge_data, "source": src, "target": tgt}
+                            )
+                            if normalized_edge:
+                                normalized_key, normalized_data = normalized_edge
+                                affected_edges.append(normalized_data)
+                                affected_edge_keys.add(normalized_key)
+
+                extra_nodes, extra_edges = await self._find_graph_records_referencing_chunks(
+                    chunk_ids_set,
+                    known_node_ids=affected_node_ids,
+                    known_edge_keys=affected_edge_keys,
+                )
+                if extra_nodes or extra_edges:
+                    affected_nodes.extend(extra_nodes)
+                    affected_edges.extend(extra_edges)
+                    logger.info(
+                        "Document %s: found %d graph node(s) and %d edge(s) by source_id fallback",
+                        doc_id,
+                        len(extra_nodes),
+                        len(extra_edges),
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to analyze affected graph elements: {e}")
@@ -4028,6 +4382,155 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     pipeline_status["latest_message"] = completion_msg
                     pipeline_status["history_messages"].append(completion_msg)
                     logger.info(completion_msg)
+
+    async def adelete_custom_kg_sources(
+        self, sync_records: list[dict[str, Any]]
+    ) -> dict[str, int]:
+        """Delete custom-KG source rows tracked by database sync records.
+
+        Each database source row is treated as a pseudo-document whose ID is
+        the stable ``source_id`` emitted by ``ConfigurableKGBuilder``. The
+        actual chunk IDs are stored by ``ainsert_custom_kg`` in
+        ``full_entities`` / ``full_relations`` and then passed to the same
+        purge helper used by document deletion.
+        """
+
+        pipeline_status = await get_namespace_data(
+            "pipeline_status", workspace=self.workspace
+        )
+        pipeline_status_lock = get_namespace_lock(
+            "pipeline_status", workspace=self.workspace
+        )
+
+        we_acquired_pipeline = False
+        async with pipeline_status_lock:
+            if pipeline_status.get("busy", False):
+                return {
+                    "status": "not_allowed",
+                    "message": (
+                        "Custom KG source deletion not allowed: current job "
+                        f"'{pipeline_status.get('job_name')}' is running"
+                    ),
+                    "deleted_sources": 0,
+                    "deleted_chunks": 0,
+                }
+
+            we_acquired_pipeline = True
+            pipeline_status.update(
+                {
+                    "busy": True,
+                    "job_name": "Custom KG source deletion",
+                    "job_start": datetime.now(timezone.utc).isoformat(),
+                    "docs": len(sync_records),
+                    "batchs": 1,
+                    "cur_batch": 0,
+                    "request_pending": False,
+                    "cancellation_requested": False,
+                    "latest_message": "Starting custom KG source deletion",
+                }
+            )
+            pipeline_status["history_messages"][:] = [
+                "Starting custom KG source deletion"
+            ]
+
+        deleted_sources = 0
+        deleted_chunks = 0
+
+        try:
+            for record in sync_records:
+                source_id = str(record.get("source_id") or "").strip()
+                if not source_id:
+                    continue
+
+                chunk_ids = await self._resolve_custom_kg_chunk_ids(record)
+                if chunk_ids:
+                    await self._purge_doc_chunks_and_kg(
+                        source_id,
+                        chunk_ids,
+                        pipeline_status=pipeline_status,
+                        pipeline_status_lock=pipeline_status_lock,
+                    )
+                    deleted_chunks += len(chunk_ids)
+                else:
+                    await self.full_entities.delete([source_id])
+                    await self.full_relations.delete([source_id])
+
+                deleted_sources += 1
+
+            if deleted_sources:
+                await self._insert_done()
+
+            return {
+                "deleted_sources": deleted_sources,
+                "deleted_chunks": deleted_chunks,
+            }
+        finally:
+            if we_acquired_pipeline:
+                async with pipeline_status_lock:
+                    pipeline_status["busy"] = False
+                    pipeline_status["cancellation_requested"] = False
+                    completion_msg = "Custom KG source deletion completed"
+                    pipeline_status["latest_message"] = completion_msg
+                    pipeline_status["history_messages"].append(completion_msg)
+
+    async def _resolve_custom_kg_chunk_ids(
+        self, sync_record: dict[str, Any]
+    ) -> list[str]:
+        source_id = str(sync_record.get("source_id") or "").strip()
+        if not source_id:
+            return []
+
+        chunk_ids: list[str] = []
+        for storage in (self.full_entities, self.full_relations):
+            stored = await storage.get_by_id(source_id)
+            if stored and isinstance(stored, dict):
+                chunk_ids = merge_source_ids(
+                    chunk_ids,
+                    normalize_string_list(
+                        stored.get("chunk_ids", []),
+                        context=f"custom_kg_source[{source_id}].chunk_ids",
+                    ),
+                )
+
+        if chunk_ids:
+            return merge_source_ids(
+                chunk_ids,
+                await self._find_custom_kg_source_chunk_ids(source_id),
+            )
+
+        candidate_ids = merge_source_ids(
+            normalize_string_list(
+                sync_record.get("chunk_ids", []),
+                context=f"custom_kg_source[{source_id}].chunk_ids",
+            ),
+            normalize_string_list(
+                sync_record.get("chunks", []),
+                context=f"custom_kg_source[{source_id}].chunks",
+            ),
+        )
+        if not candidate_ids:
+            return []
+
+        candidate_rows = await self.text_chunks.get_by_ids(candidate_ids)
+        for candidate_id, chunk_row in zip(candidate_ids, candidate_rows):
+            if chunk_row and isinstance(chunk_row, dict):
+                chunk_ids.append(candidate_id)
+
+        return merge_source_ids(
+            chunk_ids,
+            await self._find_custom_kg_source_chunk_ids(source_id),
+        )
+
+    async def _find_custom_kg_source_chunk_ids(self, source_id: str) -> list[str]:
+        chunk_ids: list[str] = []
+        for storage in (self.text_chunks, self.chunks_vdb):
+            storage_chunk_ids = await _find_storage_chunk_ids_by_full_doc_id(
+                storage,
+                source_id,
+                self.workspace,
+            )
+            chunk_ids = merge_source_ids(chunk_ids, storage_chunk_ids)
+        return chunk_ids
 
     async def adelete_by_entity(self, entity_name: str) -> DeletionResult:
         """Asynchronously delete an entity and all its relationships.

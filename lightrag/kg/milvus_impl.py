@@ -2333,13 +2333,12 @@ class MilvusVectorDBStorage(BaseVectorStorage):
         # Build search params from index config
         search_params_base = self.index_config.build_search_params()
 
-        # Merge with metric type and radius threshold
+        # Keep threshold filtering client-side. Passing Milvus `radius` turns
+        # the request into a range search, which is not supported by all index
+        # implementations (for example VectorMemIndex).
         search_params = {
             "metric_type": self.index_config.metric_type,
-            "params": {
-                **search_params_base.get("params", {}),
-                "radius": self.cosine_better_than_threshold,
-            },
+            "params": search_params_base.get("params", {}),
         }
 
         results = self._client.search(
@@ -2349,6 +2348,17 @@ class MilvusVectorDBStorage(BaseVectorStorage):
             output_fields=output_fields,
             search_params=search_params,
         )
+        metric_type = self.index_config.metric_type
+        threshold = self.cosine_better_than_threshold
+        filtered_results = [
+            dp
+            for dp in results[0]
+            if (
+                dp["distance"] <= threshold
+                if metric_type == "L2"
+                else dp["distance"] >= threshold
+            )
+        ]
         return [
             {
                 **dp["entity"],
@@ -2356,7 +2366,7 @@ class MilvusVectorDBStorage(BaseVectorStorage):
                 "distance": dp["distance"],
                 "created_at": dp.get("created_at"),
             }
-            for dp in results[0]
+            for dp in filtered_results
         ]
 
     @staticmethod

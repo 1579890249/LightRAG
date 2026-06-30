@@ -1,0 +1,379 @@
+app:
+  description: 人和人关系分析智能体
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: advanced-chat
+  name: 公司关系查找
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: package
+  value:
+    plugin_unique_identifier: langgenius/gpustack:0.0.9@6eea0c9bec9d679e8cbf6b5d0bd71488e8b9bd1c2999f8003f7b79713942b9d9
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1782469769690-source-1782469790439-target
+      selected: false
+      source: '1782469769690'
+      sourceHandle: source
+      target: '1782469790439'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: answer
+      id: 1782630906385-source-answer-target
+      selected: false
+      source: '1782630906385'
+      sourceHandle: source
+      target: answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1782469769690-source-17826408740220-target
+      source: '1782469769690'
+      sourceHandle: source
+      target: '17826408740220'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: variable-aggregator
+      id: 1782469790439-source-1782640905217-target
+      source: '1782469790439'
+      sourceHandle: source
+      target: '1782640905217'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: variable-aggregator
+        targetType: llm
+      id: 1782640905217-source-1782630906385-target
+      source: '1782640905217'
+      sourceHandle: source
+      target: '1782630906385'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: variable-aggregator
+      id: 17826408740220-source-1782640905217-target
+      source: '17826408740220'
+      sourceHandle: source
+      target: '1782640905217'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables:
+        - default: https://172.16.4.83:8086/
+          hide: true
+          hint: ''
+          label: ip（当前地址）
+          options: []
+          placeholder: ''
+          required: false
+          type: text-input
+          variable: ip
+        - default: Bearer e625b22c-357b-4b3e-ad7e-5f2373e60347
+          hide: true
+          hint: ''
+          label: token（鉴权字段）
+          options: []
+          placeholder: ''
+          required: false
+          type: text-input
+          variable: token
+        - default: 深圳华信科技有限公司
+          hint: ''
+          label: 公司1
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: company1
+        - default: 深圳云创数据有限公司
+          hint: ''
+          label: 公司2
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: company2
+      height: 186
+      id: '1782469769690'
+      position:
+        x: 78.85130164500299
+        y: 280.4842834334896
+      positionAbsolute:
+        x: 78.85130164500299
+        y: 280.4842834334896
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        answer: '{{#1782630906385.text#}}'
+        selected: false
+        title: 直接回复
+        type: answer
+        variables: []
+      height: 102
+      id: answer
+      position:
+        x: 1763.2898243786994
+        y: 316.86148102973914
+      positionAbsolute:
+        x: 1763.2898243786994
+        y: 316.86148102973914
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - id: key-value-194
+            key: ''
+            type: text
+            value: "{\n  \"start\": {\n    \"name\": \"{{#1782469769690.company1#}}\"\
+              \n  },\n  \"end\": {\n    \"name\": \"{{#1782469769690.company2#}}\"\
+              \n  },\n  \"business_type\": \"投标行为\",\n  \"max_depth\": 4,\n  \"limit\"\
+              : 30\n}"
+          type: json
+        headers: ''
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: false
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 请求 - 投标
+        type: http-request
+        url: http://172.16.1.203:9621/audit/graph/paths/query
+        variables: []
+      height: 136
+      id: '1782469790439'
+      position:
+        x: 496.9145348717093
+        y: 178.60919886975574
+      positionAbsolute:
+        x: 496.9145348717093
+        y: 178.60919886975574
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          modelType: models
+          name: qwen3.5-27b
+          provider: langgenius/gpustack/gpustack
+          variable: []
+        prompt_template:
+        - id: d2e8f762-4dd1-451b-ad98-cff1512dd46f
+          role: system
+          text: '{{#1782469790439.body#}} 基于这个数据，分析{{#1782469769690.company1#}}和{{#1782469769690.company2#}},是否有陪标行为和股权关系
+
+
+
+            *输出要求*
+
+            - 尽量使用结构化的数据来展示结果，不要加入主观臆测的内容
+
+            - 不要输出 $\rightarrow$ 类似这种特殊字符
+
+            - 对于难以理解的短语、关键词，要移除，不能影响整体回答质量
+
+            - 不要输出除表格以外的结构化数据，要贴近自然语言'
+        - id: 6cab2c04-ba97-4a3d-b6cc-5cbf562a2f2e
+          role: user
+          text: '{{#sys.query#}}'
+        selected: false
+        title: 综合分析
+        type: llm
+        vision:
+          enabled: false
+      height: 87
+      id: '1782630906385'
+      position:
+        x: 1339.723979766985
+        y: 328.83499635551306
+      positionAbsolute:
+        x: 1339.723979766985
+        y: 328.83499635551306
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - id: key-value-194
+            key: ''
+            type: text
+            value: "{\n  \"start\": {\n    \"name\": \"{{#1782469769690.company1#}}\"\
+              \n  },\n  \"end\": {\n    \"name\": \"{{#1782469769690.company2#}}\"\
+              \n  },\n  \"business_type\": \"股权关系\",\n  \"max_depth\": 4,\n  \"limit\"\
+              : 30\n}"
+          type: json
+        headers: ''
+        isInIteration: false
+        isInLoop: false
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: false
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP 请求 - 股权
+        type: http-request
+        url: http://172.16.1.203:9621/audit/graph/paths/query
+        variables: []
+      height: 136
+      id: '17826408740220'
+      position:
+        x: 496.9145348717093
+        y: 467.14091613617035
+      positionAbsolute:
+        x: 496.9145348717093
+        y: 467.14091613617035
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        output_type: string
+        selected: false
+        title: 变量聚合器
+        type: variable-aggregator
+        variables:
+        - - '17826408740220'
+          - body
+        - - '1782469790439'
+          - body
+      height: 133
+      id: '1782640905217'
+      position:
+        x: 938.1709698107882
+        y: 328.83499635551306
+      positionAbsolute:
+        x: 938.1709698107882
+        y: 328.83499635551306
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    viewport:
+      x: 33.15831850530634
+      y: 5.438663890034661
+      zoom: 0.6597539553864471
+  rag_pipeline_variables: []

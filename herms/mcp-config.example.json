@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "audit-relation-tools": {
+      "command": "python",
+      "args": ["-m", "herms.audit_relation_mcp_server"],
+      "cwd": "D:\\Company\\Code\\Source-Code\\LightRAG",
+      "env": {
+        "LIGHTRAG_BASE_URL": "http://172.16.1.203:9621/lightRag"
+      }
+    }
+  }
+}

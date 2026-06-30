@@ -1030,6 +1030,86 @@ async def test_delete_ignores_stale_graph_source_ids_when_tracking_exists(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_delete_removes_graph_only_node_referencing_deleted_chunk(tmp_path):
+    rag = await _build_rag(
+        tmp_path, "delete_graph_only_node_by_source", _deterministic_chunking
+    )
+    try:
+        doc_id = "doc-delete-graph-only-source"
+        drop_chunk_id = "chunk-drop-graph-only"
+        now = datetime.now(timezone.utc).isoformat()
+        orphan_entity = "ORPHAN-UNKNOWN"
+
+        await rag.full_docs.upsert(
+            {doc_id: {"content": "graph-only doc", "file_path": "graph_only.txt"}}
+        )
+        await rag.doc_status.upsert(
+            {
+                doc_id: {
+                    "status": DocStatus.PROCESSED,
+                    "content_summary": "graph-only doc",
+                    "content_length": 14,
+                    "chunks_count": 1,
+                    "chunks_list": [drop_chunk_id],
+                    "created_at": now,
+                    "updated_at": now,
+                    "file_path": "graph_only.txt",
+                    "track_id": f"track-{doc_id}",
+                    "error_msg": "",
+                    "metadata": {},
+                }
+            }
+        )
+        chunk_payload = {
+            drop_chunk_id: {
+                "content": "graph-only chunk",
+                "file_path": "graph_only.txt",
+                "full_doc_id": doc_id,
+            }
+        }
+        await rag.text_chunks.upsert(chunk_payload)
+        await rag.chunks_vdb.upsert(chunk_payload)
+
+        await rag.chunk_entity_relation_graph.upsert_node(
+            orphan_entity,
+            {
+                "entity_id": orphan_entity,
+                "source_id": drop_chunk_id,
+                "description": "relationship endpoint placeholder",
+                "entity_type": "UNKNOWN",
+                "file_path": "graph_only.txt",
+                "created_at": int(datetime.now(timezone.utc).timestamp()),
+                "truncate": "",
+            },
+        )
+        await rag.entities_vdb.upsert(
+            {
+                compute_mdhash_id(orphan_entity, prefix="ent-"): {
+                    "content": f"{orphan_entity}\nrelationship endpoint placeholder",
+                    "entity_name": orphan_entity,
+                    "source_id": drop_chunk_id,
+                    "description": "relationship endpoint placeholder",
+                    "entity_type": "UNKNOWN",
+                    "file_path": "graph_only.txt",
+                }
+            }
+        )
+
+        result = await rag.adelete_by_doc_id(doc_id)
+
+        assert result.status == "success"
+        assert await rag.chunk_entity_relation_graph.get_node(orphan_entity) is None
+        assert (
+            await rag.entities_vdb.get_by_id(
+                compute_mdhash_id(orphan_entity, prefix="ent-")
+            )
+            is None
+        )
+    finally:
+        await rag.finalize_storages()
+
+
+@pytest.mark.asyncio
 async def test_validate_and_fix_consistency_preserves_chunks_on_reset(tmp_path):
     rag = await _build_rag(tmp_path, "reset_preserve_chunks", _deterministic_chunking)
     try:

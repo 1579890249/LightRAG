@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createSelectors } from '@/lib/utils'
 import { checkHealth, LightragStatus } from '@/api/lightrag'
 import { useSettingsStore } from './settings'
-import { healthCheckInterval } from '@/lib/constants'
+import { healthCheckInterval, SiteInfo } from '@/lib/constants'
 
 interface BackendState {
   health: boolean
@@ -32,15 +32,16 @@ interface AuthState {
   coreVersion: string | null;
   apiVersion: string | null;
   username: string | null; // login username
+  webuiBrandName: string | null; // Custom brand name
   webuiTitle: string | null; // Custom title
   webuiDescription: string | null; // Title description
   lastTokenRenewal: string | null; // Human-readable local time of last token renewal (for debugging and monitoring)
   tokenExpiresAt: number | null; // Token expiration timestamp (extracted from JWT)
 
-  login: (token: string, isGuest?: boolean, coreVersion?: string | null, apiVersion?: string | null, webuiTitle?: string | null, webuiDescription?: string | null) => void;
+  login: (token: string, isGuest?: boolean, coreVersion?: string | null, apiVersion?: string | null, webuiTitle?: string | null, webuiDescription?: string | null, webuiBrandName?: string | null) => void;
   logout: () => void;
   setVersion: (coreVersion: string | null, apiVersion: string | null) => void;
-  setCustomTitle: (webuiTitle: string | null, webuiDescription: string | null) => void;
+  setCustomBranding: (webuiTitle: string | null, webuiDescription: string | null, webuiBrandName: string | null) => void;
   setTokenRenewal: (renewalTime: number, expiresAt: number) => void; // Track token renewal
 }
 
@@ -67,11 +68,12 @@ const useBackendStateStoreBase = create<BackendState>()((set, get) => ({
         );
       }
 
-      // Update custom title information if health check returns it
-      if ('webui_title' in health || 'webui_description' in health) {
-        useAuthStore.getState().setCustomTitle(
+      // Update custom branding information if health check returns it
+      if ('webui_title' in health || 'webui_description' in health || 'webui_brand_name' in health) {
+        useAuthStore.getState().setCustomBranding(
           'webui_title' in health ? (health.webui_title ?? null) : null,
-          'webui_description' in health ? (health.webui_description ?? null) : null
+          'webui_description' in health ? (health.webui_description ?? null) : null,
+          'webui_brand_name' in health ? (health.webui_brand_name ?? null) : null
         );
       }
 
@@ -202,10 +204,11 @@ const getTokenExpiresAt = (token: string): number | null => {
   return payload.exp ? payload.exp * 1000 : null; // Convert to milliseconds
 };
 
-const initAuthState = (): { isAuthenticated: boolean; isGuestMode: boolean; coreVersion: string | null; apiVersion: string | null; username: string | null; webuiTitle: string | null; webuiDescription: string | null; lastTokenRenewal: string | null; tokenExpiresAt: number | null } => {
+const initAuthState = (): { isAuthenticated: boolean; isGuestMode: boolean; coreVersion: string | null; apiVersion: string | null; username: string | null; webuiBrandName: string | null; webuiTitle: string | null; webuiDescription: string | null; lastTokenRenewal: string | null; tokenExpiresAt: number | null } => {
   const token = localStorage.getItem('LIGHTRAG-API-TOKEN');
   const coreVersion = localStorage.getItem('LIGHTRAG-CORE-VERSION');
   const apiVersion = localStorage.getItem('LIGHTRAG-API-VERSION');
+  const webuiBrandName = localStorage.getItem('LIGHTRAG-WEBUI-BRAND-NAME');
   const webuiTitle = localStorage.getItem('LIGHTRAG-WEBUI-TITLE');
   const webuiDescription = localStorage.getItem('LIGHTRAG-WEBUI-DESCRIPTION');
   const lastTokenRenewal = localStorage.getItem('LIGHTRAG-LAST-TOKEN-RENEWAL');
@@ -219,6 +222,7 @@ const initAuthState = (): { isAuthenticated: boolean; isGuestMode: boolean; core
       coreVersion: coreVersion,
       apiVersion: apiVersion,
       username: null,
+      webuiBrandName: webuiBrandName,
       webuiTitle: webuiTitle,
       webuiDescription: webuiDescription,
       lastTokenRenewal: null,
@@ -232,6 +236,7 @@ const initAuthState = (): { isAuthenticated: boolean; isGuestMode: boolean; core
     coreVersion: coreVersion,
     apiVersion: apiVersion,
     username: username,
+    webuiBrandName: webuiBrandName,
     webuiTitle: webuiTitle,
     webuiDescription: webuiDescription,
     lastTokenRenewal: lastTokenRenewal,
@@ -249,12 +254,13 @@ export const useAuthStore = create<AuthState>(set => {
     coreVersion: initialState.coreVersion,
     apiVersion: initialState.apiVersion,
     username: initialState.username,
+    webuiBrandName: initialState.webuiBrandName,
     webuiTitle: initialState.webuiTitle,
     webuiDescription: initialState.webuiDescription,
     lastTokenRenewal: initialState.lastTokenRenewal,
     tokenExpiresAt: initialState.tokenExpiresAt,
 
-    login: (token, isGuest = false, coreVersion = null, apiVersion = null, webuiTitle = null, webuiDescription = null) => {
+    login: (token, isGuest = false, coreVersion = null, apiVersion = null, webuiTitle = null, webuiDescription = null, webuiBrandName = null) => {
       localStorage.setItem('LIGHTRAG-API-TOKEN', token);
 
       if (coreVersion) {
@@ -263,6 +269,9 @@ export const useAuthStore = create<AuthState>(set => {
       if (apiVersion) {
         localStorage.setItem('LIGHTRAG-API-VERSION', apiVersion);
       }
+
+      const resolvedBrandName = webuiBrandName || SiteInfo.name;
+      localStorage.setItem('LIGHTRAG-WEBUI-BRAND-NAME', resolvedBrandName);
 
       if (webuiTitle) {
         localStorage.setItem('LIGHTRAG-WEBUI-TITLE', webuiTitle);
@@ -290,6 +299,7 @@ export const useAuthStore = create<AuthState>(set => {
         username: username,
         coreVersion: coreVersion,
         apiVersion: apiVersion,
+        webuiBrandName: resolvedBrandName,
         webuiTitle: webuiTitle,
         webuiDescription: webuiDescription,
         tokenExpiresAt: tokenExpiresAt,
@@ -303,6 +313,7 @@ export const useAuthStore = create<AuthState>(set => {
 
       const coreVersion = localStorage.getItem('LIGHTRAG-CORE-VERSION');
       const apiVersion = localStorage.getItem('LIGHTRAG-API-VERSION');
+      const webuiBrandName = localStorage.getItem('LIGHTRAG-WEBUI-BRAND-NAME');
       const webuiTitle = localStorage.getItem('LIGHTRAG-WEBUI-TITLE');
       const webuiDescription = localStorage.getItem('LIGHTRAG-WEBUI-DESCRIPTION');
 
@@ -312,6 +323,7 @@ export const useAuthStore = create<AuthState>(set => {
         username: null,
         coreVersion: coreVersion,
         apiVersion: apiVersion,
+        webuiBrandName: webuiBrandName,
         webuiTitle: webuiTitle,
         webuiDescription: webuiDescription,
         lastTokenRenewal: null,
@@ -335,8 +347,11 @@ export const useAuthStore = create<AuthState>(set => {
       });
     },
 
-    setCustomTitle: (webuiTitle, webuiDescription) => {
+    setCustomBranding: (webuiTitle, webuiDescription, webuiBrandName) => {
       // Update localStorage
+      const resolvedBrandName = webuiBrandName || SiteInfo.name;
+      localStorage.setItem('LIGHTRAG-WEBUI-BRAND-NAME', resolvedBrandName);
+
       if (webuiTitle) {
         localStorage.setItem('LIGHTRAG-WEBUI-TITLE', webuiTitle);
       } else {
@@ -351,6 +366,7 @@ export const useAuthStore = create<AuthState>(set => {
 
       // Update state
       set({
+        webuiBrandName: resolvedBrandName,
         webuiTitle: webuiTitle,
         webuiDescription: webuiDescription
       });

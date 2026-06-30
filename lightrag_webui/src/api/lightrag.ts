@@ -149,6 +149,7 @@ export type LightragStatus = {
   }
   webui_title?: string
   webui_description?: string
+  webui_brand_name?: string
 }
 
 export type LightragDocumentsScanProgress = {
@@ -328,6 +329,7 @@ export type AuthStatusResponse = {
   api_version?: string
   webui_title?: string
   webui_description?: string
+  webui_brand_name?: string
 }
 
 export type PipelineStatusResponse = {
@@ -354,6 +356,7 @@ export type LoginResponse = {
   api_version?: string
   webui_title?: string
   webui_description?: string
+  webui_brand_name?: string
 }
 
 export const InvalidApiKeyError = 'Invalid API Key'
@@ -400,7 +403,8 @@ const silentRefreshGuestToken = async (): Promise<string> => {
           response.data.core_version,
           response.data.api_version,
           response.data.webui_title || null,
-          response.data.webui_description || null
+          response.data.webui_description || null,
+          response.data.webui_brand_name || null
         );
         return newToken;
       } else {

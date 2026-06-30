@@ -8,6 +8,11 @@ import App from './App'
 import LoginPage from '@/features/LoginPage'
 import ThemeProvider from '@/components/ThemeProvider'
 
+const getRedirectPath = () => {
+  const currentPath = window.location.hash.slice(1)
+  return currentPath && currentPath !== '/login' ? currentPath : '/'
+}
+
 const AppContent = () => {
   const [initializing, setInitializing] = useState(true)
   const { isAuthenticated } = useAuthStore()
@@ -55,7 +60,7 @@ const AppContent = () => {
       const currentPath = window.location.hash.slice(1);
       if (currentPath !== '/login') {
         console.log('Not authenticated, redirecting to login');
-        navigate('/login');
+        navigate('/login', { state: { redirectTo: getRedirectPath() } });
       }
     }
   }, [initializing, isAuthenticated, navigate]);
@@ -68,6 +73,14 @@ const AppContent = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/knowledge-graph"
+        element={isAuthenticated ? <App initialTab="knowledge-graph" hideHeader /> : null}
+      />
+      <Route
+        path="/retrieval"
+        element={isAuthenticated ? <App initialTab="retrieval" hideHeader /> : null}
+      />
       <Route
         path="/*"
         element={isAuthenticated ? <App /> : null}
