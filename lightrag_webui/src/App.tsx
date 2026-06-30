@@ -18,10 +18,17 @@ import ApiSite from '@/features/ApiSite'
 
 import { Tabs, TabsContent } from '@/components/ui/Tabs'
 
-function App() {
+type AppProps = {
+  initialTab?: 'documents' | 'knowledge-graph' | 'retrieval' | 'api'
+  hideHeader?: boolean
+}
+
+function App({ initialTab, hideHeader = false }: AppProps = {}) {
   const message = useBackendState.use.message()
   const enableHealthCheck = useSettingsStore.use.enableHealthCheck()
-  const currentTab = useSettingsStore.use.currentTab()
+  const storedCurrentTab = useSettingsStore.use.currentTab()
+  const currentTab = initialTab ?? storedCurrentTab
+  const webuiBrandName = useAuthStore(state => state.webuiBrandName)
   const [apiKeyAlertOpen, setApiKeyAlertOpen] = useState(false)
   const [initializing, setInitializing] = useState(true) // Add initializing state
   const versionCheckRef = useRef(false); // Prevent duplicate calls in Vite dev mode
@@ -98,13 +105,6 @@ function App() {
       if (versionCheckRef.current) return;
       versionCheckRef.current = true;
 
-      // Check if version info was already obtained in login page
-      const versionCheckedFromLogin = sessionStorage.getItem('VERSION_CHECKED_FROM_LOGIN') === 'true';
-      if (versionCheckedFromLogin) {
-        setInitializing(false); // Skip initialization if already checked
-        return;
-      }
-
       try {
         setInitializing(true); // Start initialization
 
@@ -120,9 +120,10 @@ function App() {
             status.core_version,
             status.api_version,
             status.webui_title || null,
-            status.webui_description || null
+            status.webui_description || null,
+            status.webui_brand_name || null
           );
-        } else if (token && (status.core_version || status.api_version || status.webui_title || status.webui_description)) {
+        } else if (token && (status.core_version || status.api_version || status.webui_title || status.webui_description || status.webui_brand_name)) {
           // Otherwise use the old token (if it exists)
           const isGuestMode = status.auth_mode === 'disabled' || useAuthStore.getState().isGuestMode;
           useAuthStore.getState().login(
@@ -131,7 +132,8 @@ function App() {
             status.core_version,
             status.api_version,
             status.webui_title || null,
-            status.webui_description || null
+            status.webui_description || null,
+            status.webui_brand_name || null
           );
         }
 
@@ -170,23 +172,25 @@ function App() {
         {initializing ? (
           // Loading state while initializing with simplified header
           <div className="flex h-screen w-screen flex-col">
-            {/* Simplified header during initialization - matches SiteHeader structure */}
-            <header className="border-border/40 bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 flex h-10 w-full border-b px-4 backdrop-blur">
-              <div className="min-w-[200px] w-auto flex items-center">
-                <a href={webuiPrefix} className="flex items-center gap-2">
-                  <ZapIcon className="size-4 text-emerald-400" aria-hidden="true" />
-                  <span className="font-bold md:inline-block">{SiteInfo.name}</span>
-                </a>
-              </div>
+            {!hideHeader && (
+              // Simplified header during initialization - matches SiteHeader structure
+              <header className="border-border/40 bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 flex h-10 w-full border-b px-4 backdrop-blur">
+                <div className="min-w-[200px] w-auto flex items-center">
+                  <a href={webuiPrefix} className="flex items-center gap-2">
+                    <ZapIcon className="size-4 text-emerald-400" aria-hidden="true" />
+                    <span className="font-bold md:inline-block">{webuiBrandName || SiteInfo.name}</span>
+                  </a>
+                </div>
 
-              {/* Empty middle section to maintain layout */}
-              <div className="flex h-10 flex-1 items-center justify-center">
-              </div>
+                {/* Empty middle section to maintain layout */}
+                <div className="flex h-10 flex-1 items-center justify-center">
+                </div>
 
-              {/* Empty right section to maintain layout */}
-              <nav className="w-[200px] flex items-center justify-end">
-              </nav>
-            </header>
+                {/* Empty right section to maintain layout */}
+                <nav className="w-[200px] flex items-center justify-end">
+                </nav>
+              </header>
+            )}
 
             {/* Loading indicator in content area */}
             <div className="flex flex-1 items-center justify-center">
@@ -204,7 +208,7 @@ function App() {
               className="!m-0 flex grow flex-col !p-0 overflow-hidden"
               onValueChange={handleTabChange}
             >
-              <SiteHeader />
+              {!hideHeader && <SiteHeader />}
               <div className="relative grow">
                 <TabsContent value="documents" className="absolute top-0 right-0 bottom-0 left-0 overflow-auto">
                   <DocumentManager />

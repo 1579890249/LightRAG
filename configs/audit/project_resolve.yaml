@@ -1,0 +1,27 @@
+﻿# Project entity resolution configuration for the audit workflow.
+# These words are removed from user questions before matching project names and aliases.
+stop_words:
+  - 查
+  - 查一下
+  - 看
+  - 看一下
+  - 帮我
+  - 请
+  - 是否
+  - 是不是
+  - 有没有
+  - 存在
+  - 项目
+  - 审计
+  - 风险
+  - 围标
+  - 串标
+  - 关联
+  - 关系
+  - 情况
+  - 一下
+  - 这个
+  - 那个
+  - 进行
+  - 分析
+  - 检查

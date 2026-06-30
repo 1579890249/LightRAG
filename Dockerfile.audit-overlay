@@ -1,0 +1,35 @@
+FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend-builder
+
+WORKDIR /app
+
+COPY lightrag_webui/ ./lightrag_webui/
+
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    cd lightrag_webui \
+    && bun install --frozen-lockfile \
+    && bun run build
+
+FROM ghcr.io/hkuds/lightrag-custom:audit-base-20260623 AS audit-base
+
+FROM audit-base
+
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+COPY lightrag/ ./lightrag/
+COPY configs/ ./configs/
+
+RUN /app/.venv/bin/python -m pip install --no-cache-dir jieba
+
+RUN rm -rf /app/lightrag/api/webui
+COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
+
+# Keep every import path in the overlay image on the same code revision. The
+# base image also contains an installed copy in the venv and build/lib; update
+# those copies so scripts run outside /app do not import stale backend code.
+RUN rm -rf /app/.venv/lib/python3.12/site-packages/lightrag /app/build/lib/lightrag \
+    && cp -a /app/lightrag /app/.venv/lib/python3.12/site-packages/lightrag \
+    && mkdir -p /app/build/lib \
+    && cp -a /app/lightrag /app/build/lib/lightrag \
+    && find /app/lightrag /app/.venv/lib/python3.12/site-packages/lightrag /app/build/lib/lightrag \
+        -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Codex Session Startup
+
+At the start of each Codex session in this workspace, first read `docs/deployment/lightrag-server-172-16-1-203.md` and use it as workspace-specific deployment context.
+
 ## Project Overview
 
 LightRAG is a Retrieval-Augmented Generation (RAG) framework that uses graph-based knowledge representation for enhanced information retrieval. The system extracts entities and relationships from documents, builds a knowledge graph, and uses multiple retrieval modes (`local`, `global`, `hybrid`, `mix`, `naive`) for queries.

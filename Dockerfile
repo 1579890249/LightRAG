@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # Frontend build stage
 # Build frontend assets on the native build platform to avoid
 # cross-architecture emulation issues during multi-platform builds.
@@ -43,6 +41,7 @@ RUN mkdir -p /root/.local/share/uv
 COPY pyproject.toml .
 COPY setup.py .
 COPY uv.lock .
+COPY configs/ ./configs/
 
 # Install base, API, and offline extras without the project to improve caching
 RUN --mount=type=cache,target=/root/.local/share/uv \

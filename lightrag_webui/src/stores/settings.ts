@@ -95,7 +95,7 @@ const useSettingsStoreBase = create<SettingsState>()(
 
       showEdgeLabel: false,
       enableHideUnselectedEdges: true,
-      enableEdgeEvents: false,
+      enableEdgeEvents: true,
 
       minEdgeSize: 1,
       maxEdgeSize: 1,
@@ -229,7 +229,7 @@ const useSettingsStoreBase = create<SettingsState>()(
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 20,
+      version: 21,
       migrate: (state: any, version: number) => {
         if (version < 2) {
           state.showEdgeLabel = false
@@ -341,6 +341,9 @@ const useSettingsStoreBase = create<SettingsState>()(
             ...existing,
             ...suggestedUserPrompts.filter((p: string) => !existing.includes(p))
           ]
+        }
+        if (version < 21) {
+          state.enableEdgeEvents = true
         }
         return state
       }

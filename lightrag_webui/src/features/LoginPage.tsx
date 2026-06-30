@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/state'
 import { useSettingsStore } from '@/stores/settings'
 import { loginToServer, getAuthStatus } from '@/api/lightrag'
@@ -13,13 +13,15 @@ import AppSettings from '@/components/AppSettings'
 
 const LoginPage = () => {
   const navigate = useNavigate()
-  const { login, isAuthenticated } = useAuthStore()
+  const location = useLocation()
+  const { login, isAuthenticated, webuiBrandName } = useAuthStore()
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [checkingAuth, setCheckingAuth] = useState(true)
   const authCheckRef = useRef(false); // Prevent duplicate calls in Vite dev mode
+  const redirectTo = (location.state as { redirectTo?: string } | null)?.redirectTo || '/'
 
   useEffect(() => {
     console.log('LoginPage mounted')
@@ -38,7 +40,7 @@ const LoginPage = () => {
       try {
         // If already authenticated, redirect to home
         if (isAuthenticated) {
-          navigate('/')
+          navigate(redirectTo)
           return
         }
 
@@ -52,11 +54,11 @@ const LoginPage = () => {
 
         if (!status.auth_configured && status.access_token) {
           // If auth is not configured, use the guest token and redirect
-          login(status.access_token, true, status.core_version, status.api_version, status.webui_title || null, status.webui_description || null)
+          login(status.access_token, true, status.core_version, status.api_version, status.webui_title || null, status.webui_description || null, status.webui_brand_name || null)
           if (status.message) {
             toast.info(status.message)
           }
-          navigate('/')
+          navigate(redirectTo)
           return
         }
 
@@ -77,7 +79,7 @@ const LoginPage = () => {
     // Cleanup function to prevent state updates after unmount
     return () => {
     }
-  }, [isAuthenticated, login, navigate])
+  }, [isAuthenticated, login, navigate, redirectTo])
 
   // Don't render anything while checking auth
   if (checkingAuth) {
@@ -115,7 +117,7 @@ const LoginPage = () => {
 
       // Check authentication mode
       const isGuestMode = response.auth_mode === 'disabled'
-      login(response.access_token, isGuestMode, response.core_version, response.api_version, response.webui_title || null, response.webui_description || null)
+      login(response.access_token, isGuestMode, response.core_version, response.api_version, response.webui_title || null, response.webui_description || null, response.webui_brand_name || null)
 
       // Set session flag for version check
       if (response.core_version || response.api_version) {
@@ -130,7 +132,7 @@ const LoginPage = () => {
       }
 
       // Navigate to home page after successful login
-      navigate('/')
+      navigate(redirectTo)
     } catch (error) {
       console.error('Login failed...', error)
       toast.error(t('login.errorInvalidCredentials'))
@@ -157,7 +159,7 @@ const LoginPage = () => {
               <ZapIcon className="size-10 text-emerald-400" aria-hidden="true" />
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight">LightRAG</h1>
+              <h1 className="text-3xl font-bold tracking-tight">{webuiBrandName || 'LightRAG'}</h1>
               <p className="text-muted-foreground text-sm">
                 {t('login.description')}
               </p>

@@ -60,7 +60,9 @@ from lightrag.parser.routing import (
 from lightrag.parser.external.mineru.cache import MinerUParserOptions
 from lightrag.api.routers.query_routes import create_query_routes
 from lightrag.api.routers.graph_routes import create_graph_routes
+from lightrag.api.routers.audit_routes import create_audit_routes
 from lightrag.api.routers.ollama_api import OllamaAPI
+from lightrag.api.webui_branding import get_webui_branding
 
 from lightrag.utils import logger, set_verbose_debug
 from lightrag.kg.shared_storage import (
@@ -77,10 +79,6 @@ from lightrag.api.auth import auth_handler
 # allows to use different .env file for each lightrag instance
 # the OS environment variables take precedence over the .env file
 load_dotenv(dotenv_path=".env", override=False)
-
-
-webui_title = os.getenv("WEBUI_TITLE")
-webui_description = os.getenv("WEBUI_DESCRIPTION")
 
 # Global authentication configuration
 auth_configured = bool(auth_handler.accounts)
@@ -1201,6 +1199,7 @@ def check_frontend_build():
 def create_app(args):
     # Check frontend build first and get status
     webui_assets_exist, is_frontend_outdated = check_frontend_build()
+    webui_branding = get_webui_branding()
 
     # Create unified API version display with warning symbol if frontend is outdated
     api_version_display = (
@@ -2112,6 +2111,7 @@ def create_app(args):
     app.include_router(create_document_routes(rag, doc_manager, api_key))
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))
+    app.include_router(create_audit_routes(rag, api_key))
 
     # Add Ollama API routes
     ollama_api = OllamaAPI(rag, top_k=args.top_k, api_key=api_key)
@@ -2172,8 +2172,7 @@ def create_app(args):
                 "message": "Authentication is disabled. Using guest access.",
                 "core_version": core_version,
                 "api_version": api_version_display,
-                "webui_title": webui_title,
-                "webui_description": webui_description,
+                **webui_branding,
             }
 
         return {
@@ -2181,8 +2180,7 @@ def create_app(args):
             "auth_mode": "enabled",
             "core_version": core_version,
             "api_version": api_version_display,
-            "webui_title": webui_title,
-            "webui_description": webui_description,
+            **webui_branding,
         }
 
     @app.post("/login")
@@ -2199,8 +2197,7 @@ def create_app(args):
                 "message": "Authentication is disabled. Using guest access.",
                 "core_version": core_version,
                 "api_version": api_version_display,
-                "webui_title": webui_title,
-                "webui_description": webui_description,
+                **webui_branding,
             }
         username = form_data.username
         if not auth_handler.verify_password(username, form_data.password):
@@ -2216,8 +2213,7 @@ def create_app(args):
             "auth_mode": "enabled",
             "core_version": core_version,
             "api_version": api_version_display,
-            "webui_title": webui_title,
-            "webui_description": webui_description,
+            **webui_branding,
         }
 
     @app.get(
@@ -2328,8 +2324,7 @@ def create_app(args):
                 "core_version": core_version,
                 "api_version": api_version_display,
                 "webui_available": webui_assets_exist,
-                "webui_title": webui_title,
-                "webui_description": webui_description,
+                **webui_branding,
                 "pipeline_busy": pipeline_busy,
                 "pipeline_active": pipeline_active,
             }

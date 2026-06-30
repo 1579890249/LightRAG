@@ -1,0 +1,361 @@
+schema_version: audit_kg_v1
+database_name: audit
+
+sources:
+  enterprise:
+    table: enterprise
+    primary_key: enterprise_id
+  person:
+    table: person
+    primary_key: person_id
+  project:
+    table: project
+    primary_key: project_id
+  bid_record:
+    primary_key: bid_id
+    query: >
+      SELECT
+        br.*,
+        e.enterprise_name,
+        p.project_name
+      FROM bid_record br
+      LEFT JOIN enterprise e ON e.enterprise_id = br.enterprise_id
+      LEFT JOIN project p ON p.project_id = br.project_id
+  project_person_role:
+    primary_key: id
+    query: >
+      SELECT
+        ppr.id,
+        ppr.project_id,
+        prj.project_name,
+        ppr.person_id,
+        p.name AS person_name,
+        ppr.enterprise_id,
+        e.enterprise_name,
+        ppr.side,
+        ppr.role_type,
+        ppr.start_date,
+        ppr.end_date,
+        ppr.status,
+        ppr.remark
+      FROM project_person_role ppr
+      LEFT JOIN project prj ON prj.project_id = ppr.project_id
+      LEFT JOIN person p ON p.person_id = ppr.person_id
+      LEFT JOIN enterprise e ON e.enterprise_id = ppr.enterprise_id
+  project_expert:
+    primary_key: id
+    query: >
+      SELECT
+        pe.id,
+        pe.project_id,
+        prj.project_name,
+        pe.person_id,
+        p.name AS person_name,
+        p.address AS person_address,
+        pe.role_type,
+        pe.status,
+        pe.remark
+      FROM project_expert pe
+      LEFT JOIN project prj ON prj.project_id = pe.project_id
+      LEFT JOIN person p ON p.person_id = pe.person_id
+  bid_person_role:
+    primary_key: id
+    query: >
+      SELECT
+        bpr.id,
+        bpr.bid_id,
+        br.project_id,
+        p.project_name,
+        br.enterprise_id,
+        e.enterprise_name,
+        bpr.person_id,
+        pe.name AS person_name,
+        bpr.role_type,
+        bpr.start_date,
+        bpr.end_date,
+        bpr.status,
+        bpr.remark,
+        e.enterprise_name || '投标' || p.project_name || '（' || bpr.bid_id || '）' AS bid_name
+      FROM bid_person_role bpr
+      LEFT JOIN bid_record br ON br.bid_id = bpr.bid_id
+      LEFT JOIN project p ON p.project_id = COALESCE(bpr.project_id, br.project_id)
+      LEFT JOIN enterprise e ON e.enterprise_id = COALESCE(bpr.enterprise_id, br.enterprise_id)
+      LEFT JOIN person pe ON pe.person_id = bpr.person_id
+  person_relation:
+    table: person_relation
+    primary_key: id
+  enterprise_certificate:
+    table: enterprise_certificate
+    primary_key: id
+  enterprise_revenue:
+    table: enterprise_revenue
+    primary_key: id
+  person_enterprise_position:
+    primary_key: id
+    query: >
+      SELECT
+        pep.id,
+        pep.person_id,
+        p.name AS person_name,
+        pep.enterprise_id,
+        e.enterprise_name,
+        pep.position,
+        pep.start_date,
+        pep.end_date,
+        pep.status,
+        pep.remark
+      FROM person_enterprise_position pep
+      LEFT JOIN person p ON p.person_id = pep.person_id
+      LEFT JOIN enterprise e ON e.enterprise_id = pep.enterprise_id
+  enterprise_shareholding:
+    primary_key: id
+    query: >
+      SELECT
+        esh.id,
+        esh.enterprise_name,
+        target_e.enterprise_id AS target_enterprise_id,
+        target_e.enterprise_name AS target_enterprise_name,
+        esh.holder_type,
+        esh.holder_name,
+        holder_p.person_id AS holder_person_id,
+        holder_p.name AS holder_person_name,
+        holder_e.enterprise_id AS holder_enterprise_id,
+        holder_e.enterprise_name AS holder_enterprise_name,
+        esh.shareholding_ratio
+      FROM enterprise_shareholding esh
+      LEFT JOIN enterprise target_e ON target_e.enterprise_name = esh.enterprise_name
+      LEFT JOIN person holder_p
+        ON esh.holder_type = 1
+       AND holder_p.name = esh.holder_name
+      LEFT JOIN enterprise holder_e
+        ON esh.holder_type = 2
+       AND holder_e.enterprise_name = esh.holder_name
+
+entity_types:
+  Organization:
+    label: enterprise
+    id_prefix: Organization
+  Person:
+    label: person
+    id_prefix: Person
+  Project:
+    label: project
+    id_prefix: Project
+  BidSubmission:
+    label: bid submission
+    id_prefix: BidSubmission
+  Certificate:
+    label: enterprise certificate
+    id_prefix: Certificate
+  RevenueRecord:
+    label: enterprise revenue record
+    id_prefix: RevenueRecord
+  ShareholdingRecord:
+    label: enterprise shareholding record
+    id_prefix: ShareholdingRecord
+
+entities:
+  - source: enterprise
+    entity_type: Organization
+    id_field: enterprise_id
+    name_field: enterprise_name
+    entity_name_template: "{enterprise_name}"
+    description_template: "{enterprise_name}; industry={industry}; business_scope={business_scope}; address={registered_address}; status={status}"
+    metadata_fields: "*"
+
+  - source: person
+    entity_type: Person
+    id_field: person_id
+    name_field: name
+    entity_name_template: "{name}"
+    description_template: "{name}; phone={phone}; address={address}; is_expert={is_expert}"
+    metadata_fields: "*"
+
+  - source: project
+    entity_type: Project
+    id_field: project_id
+    name_field: project_name
+    entity_name_template: "{project_name}"
+    description_template: "{project_name}; tender_org={tender_org}; budget={budget}; bid_time={bid_time}; status={status}"
+    metadata_fields: "*"
+
+  - source: bid_record
+    entity_type: BidSubmission
+    id_field: bid_id
+    name_template: "{enterprise_name}投标{project_name}（{bid_id}）"
+    entity_name_template: "{enterprise_name}投标{project_name}（{bid_id}）"
+    description_template: "{enterprise_name}投标{project_name}（{bid_id}）; project_id={project_id}; enterprise_id={enterprise_id}; bid_amount={bid_amount}; rank={rank}"
+    metadata_fields: "*"
+
+  - source: enterprise_certificate
+    entity_type: Certificate
+    id_field: id
+    name_field: certificate_name
+    description_template: "{certificate_name}; certificate_type={certificate_type}; valid_start_date={valid_start_date}; valid_end_date={valid_end_date}; status={status}; enterprise_id={enterprise_id}"
+    metadata_fields: "*"
+
+  - source: enterprise_revenue
+    entity_type: RevenueRecord
+    id_field: id
+    name_template: "Revenue {enterprise_id} {year}"
+    description_template: "Revenue {id}; enterprise_id={enterprise_id}; year={year}; revenue_amount={revenue_amount}"
+    metadata_fields: "*"
+
+  - source: enterprise_shareholding
+    entity_type: ShareholdingRecord
+    id_field: id
+    name_template: "{holder_name}持有{enterprise_name}{shareholding_ratio}%股权（{id}）"
+    entity_name_template: "{holder_name}持有{enterprise_name}{shareholding_ratio}%股权（{id}）"
+    description_template: "{holder_name}持有{enterprise_name}{shareholding_ratio}%股权; holder_type={holder_type}; target_enterprise_id={target_enterprise_id}; holder_person_id={holder_person_id}; holder_enterprise_id={holder_enterprise_id}"
+    metadata_fields: "*"
+
+relationships:
+  - source: bid_record
+    relation_type: FOR_PROJECT
+    src:
+      entity_type: BidSubmission
+      id_field: bid_id
+    tgt:
+      entity_type: Project
+      id_field: project_id
+    description_template: "{enterprise_name}投标{project_name}（{bid_id}） belongs to project {project_name}."
+
+  - source: bid_record
+    relation_type: BIDDER
+    src:
+      entity_type: BidSubmission
+      id_field: bid_id
+    tgt:
+      entity_type: Organization
+      id_field: enterprise_id
+    description_template: "{enterprise_name} submitted bid {bid_id} for {project_name}."
+
+  - source: project
+    relation_type: TENDERED_BY
+    src:
+      entity_type: Project
+      id_field: project_id
+    tgt:
+      entity_type: Organization
+      id_field: tender_org_id
+    description_template: "{project_name} is tendered by {tender_org}."
+
+  - source: project_person_role
+    relation_type: PROJECT_PERSON_ROLE
+    src:
+      entity_type: Project
+      id_field: project_id
+    tgt:
+      entity_type: Person
+      id_field: person_id
+    description_template: "{person_name} has project role {role_type} on {project_name}; side={side}; enterprise={enterprise_name}."
+
+  - source: project_person_role
+    relation_type: PROJECT_ROLE_ORG
+    src:
+      entity_type: Person
+      id_field: person_id
+    tgt:
+      entity_type: Organization
+      id_field: enterprise_id
+    description_template: "{person_name} represents or works with {enterprise_name} on {project_name}; side={side}; role_type={role_type}."
+
+  - source: project_expert
+    relation_type: PROJECT_EXPERT
+    src:
+      entity_type: Project
+      id_field: project_id
+    tgt:
+      entity_type: Person
+      id_field: person_id
+    description_template: "{person_name} is an evaluation expert for {project_name}; address={person_address}."
+
+  - source: bid_person_role
+    relation_type: BID_PERSON_ROLE
+    src:
+      entity_type: BidSubmission
+      id_field: bid_id
+    tgt:
+      entity_type: Person
+      id_field: person_id
+    description_template: "{person_name} has bid role {role_type} for {bid_name}."
+
+  - source: bid_person_role
+    relation_type: BID_ROLE_ORG
+    src:
+      entity_type: Person
+      id_field: person_id
+    tgt:
+      entity_type: Organization
+      id_field: enterprise_id
+    description_template: "{person_name} represents or works with {enterprise_name} for {bid_name}; role_type={role_type}."
+
+  - source: person_relation
+    relation_type: PERSON_RELATED
+    src:
+      entity_type: Person
+      id_field: person_id_1
+    tgt:
+      entity_type: Person
+      id_field: person_id_2
+    description_template: "{person_id_1_name} 与 {person_id_2_name} 存在人员关系：{relation_type}。"
+
+  - source: enterprise_certificate
+    relation_type: HAS_CERTIFICATE
+    src:
+      entity_type: Organization
+      id_field: enterprise_id
+    tgt:
+      entity_type: Certificate
+      id_field: id
+    description_template: "Enterprise {enterprise_id} has certificate {id}."
+
+  - source: enterprise_revenue
+    relation_type: HAS_REVENUE
+    src:
+      entity_type: Organization
+      id_field: enterprise_id
+    tgt:
+      entity_type: RevenueRecord
+      id_field: id
+    description_template: "Enterprise {enterprise_id} has revenue record {id}."
+
+  - source: person_enterprise_position
+    relation_type: HOLDS_POSITION
+    src:
+      entity_type: Person
+      id_field: person_id
+    tgt:
+      entity_type: Organization
+      id_field: enterprise_id
+    description_template: "{person_name} holds position {position} at {enterprise_name} from {start_date} to {end_date}."
+
+  - source: enterprise_shareholding
+    relation_type: SHAREHOLDING_TARGET
+    src:
+      entity_type: ShareholdingRecord
+      id_field: id
+    tgt:
+      entity_type: Organization
+      id_field: target_enterprise_id
+    description_template: "{holder_name} holds {shareholding_ratio}% of {target_enterprise_name}."
+
+  - source: enterprise_shareholding
+    relation_type: NATURAL_PERSON_SHAREHOLDER
+    src:
+      entity_type: ShareholdingRecord
+      id_field: id
+    tgt:
+      entity_type: Person
+      id_field: holder_person_id
+    description_template: "{holder_person_name} is a natural person shareholder of {target_enterprise_name}, holding {shareholding_ratio}%."
+
+  - source: enterprise_shareholding
+    relation_type: ENTERPRISE_SHAREHOLDER
+    src:
+      entity_type: ShareholdingRecord
+      id_field: id
+    tgt:
+      entity_type: Organization
+      id_field: holder_enterprise_id
+    description_template: "{holder_enterprise_name} is an enterprise shareholder of {target_enterprise_name}, holding {shareholding_ratio}%."

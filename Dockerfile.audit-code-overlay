@@ -1,0 +1,16 @@
+FROM ghcr.io/hkuds/lightrag-custom:audit-runtime-before-graph-path AS audit-base
+
+FROM audit-base
+
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+COPY lightrag/ ./lightrag/
+COPY configs/ ./configs/
+
+RUN rm -rf /app/.venv/lib/python3.12/site-packages/lightrag /app/build/lib/lightrag \
+    && cp -a /app/lightrag /app/.venv/lib/python3.12/site-packages/lightrag \
+    && mkdir -p /app/build/lib \
+    && cp -a /app/lightrag /app/build/lib/lightrag \
+    && find /app/lightrag /app/.venv/lib/python3.12/site-packages/lightrag /app/build/lib/lightrag \
+        -type d -name __pycache__ -prune -exec rm -rf {} +
